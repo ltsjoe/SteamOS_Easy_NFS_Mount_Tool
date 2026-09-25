@@ -1,5 +1,7 @@
 Script copied from https://github.com/Delil-A11yX/SteamOS-Mount-Tool
+
 All right go to the original authoer.
+
 Script edited with Claude to mount NFS Shares.
 
 Hello!
