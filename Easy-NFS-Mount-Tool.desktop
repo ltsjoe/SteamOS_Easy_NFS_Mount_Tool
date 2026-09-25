@@ -1,3 +1,4 @@
+#!/usr/bin/env xdg-open
 [Desktop Entry]
 Comment[en_US]=Setup permanent auto-mounting for any drive on SteamOS
 Comment=Setup permanent auto-mounting for any drive on SteamOS
