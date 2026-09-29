@@ -1,8 +1,6 @@
-Script copied from https://github.com/Delil-A11yX/SteamOS-Mount-Tool
+Based on [SteamOS-Mount-Tool](https://github.com/Delil-A11yX/SteamOS-Mount-Tool) by Delil-A11yX. Full credit for the original tool goes to them.
 
-All right go to the original author.
-
-Script edited with Claude to mount NFS Shares.
+NFS share support added by me, with Claude.
 
 ---
 Hello!
