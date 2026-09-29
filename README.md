@@ -1,8 +1,6 @@
-Script copied from https://github.com/Delil-A11yX/SteamOS-Mount-Tool
+Based on [SteamOS-Mount-Tool](https://github.com/Delil-A11yX/SteamOS-Mount-Tool) by Delil-A11yX. Full credit for the original tool goes to them.
 
-All right go to the original author.
-
-Script edited with Claude to mount NFS Shares.
+NFS share support added by me, with Claude.
 
 ---
 Hello!
@@ -15,9 +13,9 @@ This is a simple tool to help you permanently set up any NFS Shares on your Stea
 
 1.  First, download the launcher file by clicking the big link below. It will be saved directly to your `Downloads` folder.
 
-    [➡️ **Click Here to Download the Easy NFS Mount Tool** ⬅️](https://github.com/ltsjoe/SteamOS_Easy_NFS_Mount_Tool/blob/main/Easy-NFS-Mount-Tool.desktop)
+    [➡️ **Click Here to Download the Easy NFS Mount Tool** ⬅️](https://github.com/ltsjoe/SteamOS_Easy_NFS_Mount_Tool/releases/latest/download/Easy-NFS-Mount-Tool.desktop)
 
-2.  Next, open your file manager (the blue folder icon in the taskbar), go into your `Downloads` folder, and drag the **`Easy-Mount-Tool.desktop`** file onto your Desktop.
+2.  Next, open your file manager (the blue folder icon in the taskbar), go into your `Downloads` folder, and drag the **`Easy-NFS-Mount-Tool.desktop`** file onto your Desktop.
 
 3.  Now, just **double-click** the new icon on your Desktop and choose **"Execute"** from the window that pops up.
 

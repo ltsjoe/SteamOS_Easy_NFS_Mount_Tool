@@ -37,6 +37,9 @@ clean_name() {
 
 # True if the server answers on the NFS port (2049).
 nfs_port_open() {
+    # The single quotes are on purpose: the host is passed in as $0 so the
+    # inner shell expands it, not this one.
+    # shellcheck disable=SC2016
     timeout 3 bash -c 'exec 3<>"/dev/tcp/$0/2049"' "$1" 2>/dev/null
 }
 
@@ -55,6 +58,69 @@ list_exports() {
         return 1
     fi
     echo "$output" | sed -E 's/[[:space:]]+[^[:space:]]+$//' | grep -v '^[[:space:]]*$'
+}
+
+# Drop a trailing '/' so "/games" and "/games/" count as the same share.
+norm_path() {
+    local path="$1"
+    while [[ "$path" == */ && "$path" != "/" ]]; do path="${path%/}"; done
+    printf '%s' "$path"
+}
+
+# Split "server:/path" (or "[ipv6]:/path") into SPLIT_HOST and SPLIT_PATH.
+split_source() {
+    local raw="$1"
+    if [[ "$raw" == \[*\]:/* ]]; then
+        SPLIT_HOST="${raw%%]:*}"
+        SPLIT_HOST="${SPLIT_HOST#[}"
+        SPLIT_PATH="${raw#*]:}"
+    elif [[ "$raw" == *:/* ]]; then
+        SPLIT_HOST="${raw%%:/*}"
+        SPLIT_PATH="/${raw#*:/}"
+    else
+        return 1
+    fi
+    [ -n "$SPLIT_HOST" ]
+}
+
+# True if two server addresses point at the same machine. The same server can
+# be written as an IP, a short name or an FQDN, so also compare the addresses
+# each name looks up to.
+same_host() {
+    local first="${1#[}" second="${2#[}" ips address
+    first="${first%]}"
+    second="${second%]}"
+    [ "${first,,}" == "${second,,}" ] && return 0
+
+    ips=$(getent ahosts "$second" 2>/dev/null | awk '{print $1}' | sort -u)
+    [ -n "$ips" ] || return 1
+    while read -r address; do
+        [ -n "$address" ] || continue
+        grep -qxF "$address" <<<"$ips" && return 0
+    done < <(getent ahosts "$first" 2>/dev/null | awk '{print $1}' | sort -u)
+    return 1
+}
+
+# Every NFS share this device already has, as "<source><tab><mount point>".
+# Looks at systemd mount units, /etc/fstab, and what is mounted right now.
+existing_nfs_mounts() {
+    local file what where
+
+    for file in "$UNIT_DIR"/*.mount; do
+        [ -f "$file" ] || continue
+        grep -qiE '^[[:space:]]*Type[[:space:]]*=[[:space:]]*nfs4?[[:space:]]*$' "$file" || continue
+        what=$(sed -n -E 's/^[[:space:]]*What[[:space:]]*=[[:space:]]*//p' "$file" | head -n1)
+        where=$(sed -n -E 's/^[[:space:]]*Where[[:space:]]*=[[:space:]]*//p' "$file" | head -n1)
+        # A '%' is doubled inside unit files, so put it back to a single one.
+        [ -n "$what" ] && printf '%s\t%s\n' "${what//%%/%}" "${where//%%/%}"
+    done
+
+    if [ -r /etc/fstab ]; then
+        awk '$1 !~ /^#/ && ($3 == "nfs" || $3 == "nfs4") { print $1 "\t" $2 }' /etc/fstab
+    fi
+
+    findmnt --list --raw -t nfs,nfs4 -o SOURCE,TARGET -n 2>/dev/null |
+        awk 'NF >= 2 { print $1 "\t" $2 }'
 }
 
 # --- Main Function ---
@@ -142,10 +208,49 @@ main() {
 
     mapfile -t shares < <(list_exports "$server")
 
+    # Find the shares from this server that are already set up here, so they
+    # can be left out of the list below.
+    declare -A already_here=()
+    while IFS=$'\t' read -r found_source found_where; do
+        [ -n "$found_source" ] || continue
+        split_source "$found_source" || continue
+        same_host "$SPLIT_HOST" "$server" || continue
+        # A real mount point always starts with '/', so '?' means "not known".
+        already_here["$(norm_path "$SPLIT_PATH")"]="${found_where:-?}"
+    done < <(existing_nfs_mounts)
+
+    remaining=()
+    hidden=()
+    for share in "${shares[@]}"; do
+        [ -n "$share" ] || continue
+        share_key=$(norm_path "$share")
+        share_where="${already_here["$share_key"]}"
+        if [ -z "$share_where" ]; then
+            remaining+=("$share")
+        elif [ "$share_where" == "?" ]; then
+            hidden+=("$share")
+        else
+            hidden+=("$share   (set up at $share_where)")
+        fi
+    done
+    shares=("${remaining[@]}")
+
+    if [ ${#hidden[@]} -gt 0 ]; then
+        echo "These shares are already set up on this device, so they are not"
+        echo "in the list below:"
+        printf '    %s\n' "${hidden[@]}"
+        echo
+    fi
+
     if [ ${#shares[@]} -eq 0 ]; then
-        echo "No shares were listed by $server."
-        echo "Some servers (NFSv4 only) do not share their list. If you know"
-        echo "the path of the share, you can still type it in."
+        if [ ${#hidden[@]} -gt 0 ]; then
+            echo "Every share $server offers is already set up."
+            echo "You can still type a path by hand, or cancel."
+        else
+            echo "No shares were listed by $server."
+            echo "Some servers (NFSv4 only) do not share their list. If you know"
+            echo "the path of the share, you can still type it in."
+        fi
     fi
 
     echo "Please select the share you want to set up:"
@@ -158,8 +263,24 @@ main() {
         elif [ "$choice" == "$MANUAL_PATH" ]; then
             while true; do
                 read -rp "Enter the share path on the server (e.g. /mnt/user/games), or press Enter to go back: " choice
-                [[ -z "$choice" || "$choice" == /* ]] && break
-                echo "The path must start with '/'."
+                if [ -n "$choice" ] && [[ "$choice" != /* ]]; then
+                    echo "The path must start with '/'."
+                    continue
+                fi
+                # An empty answer means "go back", so there is nothing to check.
+                [ -n "$choice" ] || break
+                manual_key=$(norm_path "$choice")
+                manual_where="${already_here["$manual_key"]}"
+                if [ -n "$manual_where" ]; then
+                    if [ "$manual_where" == "?" ]; then
+                        echo "$choice from $server is already set up on this device."
+                    else
+                        echo "$choice from $server is already set up at $manual_where."
+                    fi
+                    read -rp "Set it up again anyway? [y/N]: " answer
+                    [[ "$answer" =~ ^[Yy] ]] || continue
+                fi
+                break
             done
             [ -n "$choice" ] && break
             echo "Enter the number of the share (press Enter to show the list again)."

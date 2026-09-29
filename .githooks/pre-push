@@ -1,0 +1,24 @@
+#!/bin/sh
+# Refuse any push that would change main. Changes to main go through a
+# pull request. This is a local seatbelt; the real enforcement is the
+# branch ruleset on GitHub.
+#
+# Enabled by: git config core.hooksPath .githooks
+
+protected="refs/heads/main"
+
+while read -r _local_ref _local_sha remote_ref _remote_sha; do
+	if [ "$remote_ref" = "$protected" ]; then
+		echo "" >&2
+		echo "  Blocked: this push would change main." >&2
+		echo "" >&2
+		echo "  Put the work on a branch and open a pull request:" >&2
+		echo "" >&2
+		echo "    git switch -c my-change" >&2
+		echo "    git push -u origin my-change" >&2
+		echo "" >&2
+		exit 1
+	fi
+done
+
+exit 0
