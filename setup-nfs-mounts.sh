@@ -119,7 +119,7 @@ existing_nfs_mounts() {
         awk '$1 !~ /^#/ && ($3 == "nfs" || $3 == "nfs4") { print $1 "\t" $2 }' /etc/fstab
     fi
 
-    findmnt --list --raw -t nfs,nfs4 -o SOURCE,TARGET -n 2>/dev/null |
+    findmnt --raw -t nfs,nfs4 -o SOURCE,TARGET -n 2>/dev/null |
         awk 'NF >= 2 { print $1 "\t" $2 }'
 }
 
